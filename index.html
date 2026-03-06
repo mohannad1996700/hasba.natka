@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,17 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Tajawal', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
@@ -277,213 +288,4 @@
 
             const toggleRecording = () => {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SpeechRecognition) { alert("Speech recognition is not supported."); return; }
-                if (isRecording) { setIsRecording(false); return; }
-                const recognition = new SpeechRecognition();
-                recognition.lang = speechLang === 'ar' ? 'ar-SA' : 'en-US';
-                recognition.onstart = () => setIsRecording(true);
-                recognition.onresult = (event) => {
-                    let transcript = event.results[0][0].transcript.toLowerCase();
-                    transcript = transcript.replace(/[٠١٢٣٤٥٦٧٨٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
-                    let eq = transcript.replace(/زائد/g, '+').replace(/ناقص/g, '-').replace(/ضرب/g, '×').replace(/تقسيم/g, '÷').replace(/\s+/g, '');
-                    eq = eq.replace(/[^0-9+\-×÷.%()]/g, '');
-                    if (eq) {
-                        setEquation(formatEquationWithCommas(eq));
-                        const res = evaluateExpression(eq);
-                        setResult(res ? formatNumberWithCommas(res) : '');
-                        setIsEvaluated(true);
-                        if (isTtsEnabled) speak(`${speechLang === 'en' ? 'equals' : 'يساوي'} ${res}`, speechLang, speechRate);
-                    }
-                };
-                recognition.onerror = () => setIsRecording(false);
-                recognition.onend = () => setIsRecording(false);
-                recognition.start();
-            };
-
-            const buttons = [
-                { label: 'AC', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
-                { label: '(', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
-                { label: ')', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
-                { label: 'DEL', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
-                { label: '7', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '8', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '9', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '÷', class: 'col-span-1 bg-orange-500 text-white' },
-                { label: '4', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '5', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '6', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '×', class: 'col-span-1 bg-orange-500 text-white' },
-                { label: '1', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '2', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '3', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '-', class: 'col-span-1 bg-orange-500 text-white' },
-                { label: '%', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '0', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '.', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '+', class: 'col-span-1 bg-orange-500 text-white' },
-                { label: '+/-', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
-                { label: '=', class: 'col-span-3 bg-orange-500 text-white' },
-            ];
-
-            return (
-                <div className={`min-h-[100dvh] transition-colors duration-300 flex items-center justify-center sm:p-4 font-sans ${isDarkMode ? 'bg-gray-950' : 'bg-gray-100'}`} dir={isAppArabic ? 'rtl' : 'ltr'}>
-                    <div className={`w-full h-[100dvh] sm:h-[850px] sm:max-h-[90vh] sm:max-w-md sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                        
-                        {isSettingsOpen && (
-                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                                <div onClick={() => setIsSettingsOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                                <div className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}`}>
-                                    <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-                                        <h2 className="text-xl font-bold">{isAppArabic ? 'الإعدادات' : 'Settings'}</h2>
-                                        <button onClick={() => setIsSettingsOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-                                            <Icon name="x" size={20} />
-                                        </button>
-                                    </div>
-                                    <div className="p-6 space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}><Icon name="globe" size={20} /></div>
-                                                <div>
-                                                    <p className="font-semibold">{isAppArabic ? 'لغة التطبيق' : 'App Language'}</p>
-                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تغيير لغة واجهة التطبيق' : 'Change app interface language'}</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => { vibrate(); setAppLang(prev => prev === 'ar' ? 'en' : 'ar'); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${appLang === 'ar' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
-                                                {appLang === 'ar' ? 'العربية' : 'English'}
-                                            </button>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}><Icon name="globe" size={20} /></div>
-                                                <div>
-                                                    <p className="font-semibold">{isAppArabic ? 'لغة الأرقام' : 'Number Language'}</p>
-                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تبديل بين ١٢٣ و 123' : 'Switch between ١٢٣ and 123'}</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => { vibrate(); setIsArabicKeypad(!isArabicKeypad); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${isArabicKeypad ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
-                                                {isArabicKeypad ? (isAppArabic ? 'عربي' : 'Arabic') : 'English'}
-                                            </button>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-50 text-purple-600'}`}><Icon name="mic" size={20} /></div>
-                                                <div>
-                                                    <p className="font-semibold">{isAppArabic ? 'لغة التحدث' : 'Speech Language'}</p>
-                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'لغة التعرف على الصوت والنطق' : 'Voice recognition and TTS language'}</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => { vibrate(); setSpeechLang(prev => prev === 'ar' ? 'en' : 'ar'); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${speechLang === 'ar' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'}`}>
-                                                {speechLang === 'ar' ? (isAppArabic ? 'العربية' : 'Arabic') : 'English'}
-                                            </button>
-                                        </div>
-                                        <div className="space-y-3 pt-2">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-orange-500/10 text-orange-400' : 'bg-orange-50 text-orange-600'}`}><Icon name="play" size={20} /></div>
-                                                <div>
-                                                    <p className="font-semibold">{isAppArabic ? 'سرعة النطق' : 'Speech Rate'}</p>
-                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تحكم في سرعة صوت الآلة' : 'Control the voice speed'}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                                                {[0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
-                                                    <button key={rate} onClick={() => { vibrate(); setSpeechRate(rate); }} className={`flex-1 min-w-[60px] py-2 rounded-xl font-bold transition-all ${speechRate === rate ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
-                                                        {rate}x
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className={`p-6 border-t text-center ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-                                        <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isAppArabic ? 'آلة حاسبة ذكية v2.0' : 'Smart Calculator v2.0'}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className={`absolute top-0 left-0 w-4/5 sm:w-72 h-full shadow-[4px_0_24px_rgba(0,0,0,0.1)] z-50 transform transition-all duration-300 flex flex-col ${isHistoryOpen ? 'translate-x-0' : '-translate-x-full'} ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                            <div className={`p-5 border-b flex justify-between items-center ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
-                                <button onClick={() => setIsHistoryOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-200'}`}><Icon name="x" size={20} /></button>
-                                <span className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{isAppArabic ? 'السجل' : 'History'}</span>
-                                <button onClick={() => { vibrate(); setHistory([]); }} className="text-red-500 text-sm font-medium px-3 py-1.5 rounded-full hover:bg-red-500/10 transition-colors">{isAppArabic ? 'مسح الكل' : 'Clear All'}</button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                {history.length === 0 ? (
-                                    <div className={`text-center mt-10 text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isAppArabic ? 'لا توجد عمليات سابقة' : 'No previous calculations'}</div>
-                                ) : (
-                                    history.map((item) => (
-                                        <div key={item.id} onClick={() => { vibrate(); setIsEvaluated(true); setEquation(item.equation); setResult(item.result); setIsHistoryOpen(false); }} className={`p-4 rounded-2xl cursor-pointer transition-all active:scale-95 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'}`}>
-                                            <div className={`text-xs mb-1 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{toDisplay(item.equation)}</div>
-                                            <div className={`text-lg font-bold text-right ${isDarkMode ? 'text-white' : 'text-gray-900'}`} dir="ltr">{toDisplay(item.result)}</div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="w-full h-16 sm:h-20 flex items-center justify-between px-6 pt-4 sm:pt-6 z-10">
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => { vibrate(); toggleRecording(); }} className={`p-3 rounded-full shadow-sm transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>
-                                    <Icon name="mic" size={22} />
-                                </button>
-                                <button onClick={() => { vibrate(); setIsTtsEnabled(!isTtsEnabled); }} className={`p-3 rounded-full transition-all ${isTtsEnabled ? 'bg-indigo-500 text-white' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}`}>
-                                    <Icon name={isTtsEnabled ? "volume-2" : "volume-x"} size={22} />
-                                </button>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => { vibrate(); setIsDarkMode(!isDarkMode); }} className={`p-3 rounded-full transition-all ${isDarkMode ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                                    <Icon name={isDarkMode ? "sun" : "moon"} size={22} />
-                                </button>
-                                <div className="relative" ref={menuRef}>
-                                    <button onClick={() => { vibrate(); setIsMenuOpen(!isMenuOpen); }} className={`p-3 rounded-full transition-all ${isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                                        <Icon name="more-vertical" size={22} />
-                                    </button>
-                                    {isMenuOpen && (
-                                        <div className={`absolute top-full left-0 mt-2 w-48 rounded-2xl shadow-xl z-50 overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-                                            <button onClick={() => { vibrate(); setIsHistoryOpen(true); setIsMenuOpen(false); }} className={`w-full px-4 py-3 text-right flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-white' : 'hover:bg-gray-50 text-gray-700'}`}>
-                                                <Icon name="history" size={18} />
-                                                <span className="font-medium">{isAppArabic ? 'السجل' : 'History'}</span>
-                                            </button>
-                                            <button onClick={() => { vibrate(); setIsSettingsOpen(true); setIsMenuOpen(false); }} className={`w-full px-4 py-3 text-right flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-white' : 'hover:bg-gray-50 text-gray-700'}`}>
-                                                <Icon name="settings" size={18} />
-                                                <span className="font-medium">{isAppArabic ? 'الإعدادات' : 'Settings'}</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 flex flex-col justify-end px-6 py-8 sm:py-10 relative">
-                            <div className="absolute top-4 right-6">
-                                <button onClick={handleCopy} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isCopied ? 'bg-green-500 text-white' : (isDarkMode ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}`}>
-                                    <Icon name={isCopied ? "check" : "copy"} size={14} />
-                                    {isCopied ? (isAppArabic ? 'تم النسخ' : 'Copied') : (isAppArabic ? 'نسخ' : 'Copy')}
-                                </button>
-                            </div>
-                            <div className="space-y-2">
-                                <AutoScalingText className={`font-medium text-right transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} maxScale={1.5} minScale={0.5}>
-                                    {toDisplay(equation) || '0'}
-                                </AutoScalingText>
-                                <AutoScalingText className={`font-bold text-right transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`} maxScale={3.5} minScale={0.8}>
-                                    {result ? `=${toDisplay(result)}` : toDisplay(equation) || '0'}
-                                </AutoScalingText>
-                            </div>
-                        </div>
-
-                        <div className={`p-6 sm:p-8 grid grid-cols-4 gap-3 sm:gap-4 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
-                            {buttons.map((btn, idx) => (
-                                <button key={idx} onClick={() => handlePress(btn.label)} className={`h-16 sm:h-20 rounded-[24px] sm:rounded-[30px] text-xl sm:text-2xl font-bold flex items-center justify-center transition-all active:scale-90 shadow-sm hover:brightness-110 ${btn.class}`}>
-                                    {renderLabel(btn.label)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-  </html>
+                if (!SpeechRecognition) { alert("Speech recognition
