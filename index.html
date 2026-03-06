@@ -1,291 +1,119 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>الحاسبة الناطقة الذكية</title>
-    
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Tajawal', 'Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-    
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    
-    <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Framer Motion -->
-    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
-
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Tajawal', 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        body { font-family: 'Tajawal', sans-serif; background-color: #f8fafc; overflow: hidden; }
+        .calc-container { height: 100vh; display: flex; flex-direction: column; max-width: 500px; margin: 0 auto; background: white; }
+        /* تعديل مساحة الشاشة لمنع القص */
+        .screen-area { min-height: 220px; padding: 30px 20px; display: flex; flex-direction: column; justify-content: flex-end; background: #ffffff; border-bottom: 1px solid #edf2f7; }
+        .btn-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 12px; padding: 20px; background: #fdfdfd; flex-grow: 1; }
+        .calc-btn { height: 70px; border-radius: 20px; font-size: 1.5rem; font-weight: bold; transition: all 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .calc-btn:active { transform: scale(0.95); background: #f1f5f9; }
+        .op-btn { background: #ff9500; color: white; }
+        .op-btn:active { background: #e68600; }
     </style>
 </head>
 <body>
     <div id="root"></div>
-
     <script type="text/babel">
-        const { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } = React;
-        const { motion, AnimatePresence } = window.Motion;
+        const { useState, useEffect } = React;
 
-        // --- Lucide Icons Wrapper ---
-        const Icon = ({ name, size = 24, className = "" }) => {
-            const iconRef = useRef(null);
-            useEffect(() => {
-                if (iconRef.current && window.lucide) {
-                    window.lucide.createIcons({
-                        targets: [iconRef.current]
-                    });
-                }
-            }, [name, size]);
-            return <span ref={iconRef} data-lucide={name} style={{ width: size, height: size, display: 'inline-block' }} className={className}></span>;
-        };
-
-        // --- Math Utils ---
-        const formatNumberWithCommas = (numStr) => {
-            if (!numStr) return '';
-            if (numStr.toLowerCase().includes('e')) return numStr;
-            if (numStr === 'NaN' || numStr === 'Infinity' || numStr === '-Infinity') return numStr;
-            const parts = numStr.split('.');
-            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            return parts.join('.');
-        };
-
-        const formatEquationWithCommas = (eq) => {
-            if (!eq) return '';
-            return eq.replace(/\d+(\.\d+)?([eE][+-]?\d+)?/g, (match) => formatNumberWithCommas(match));
-        };
-
-        const evaluateExpression = (expr) => {
-            try {
-                let sanitized = expr
-                    .replace(/×/g, '*')
-                    .replace(/÷/g, '/')
-                    .replace(/%/g, '/100')
-                    .replace(/,/g, '');
-                if (!sanitized) return '';
-                sanitized = sanitized.replace(/[+\-*/.]$/, '');
-                if (/^-?\d+(\.\d+)?$/.test(sanitized)) return sanitized;
-                const openParens = (sanitized.match(/\(/g) || []).length;
-                const closeParens = (sanitized.match(/\)/g) || []).length;
-                if (openParens > closeParens) sanitized += ')'.repeat(openParens - closeParens);
-                const result = new Function('return ' + sanitized)();
-                if (typeof result === 'number' && !isNaN(result)) {
-                    if (!isFinite(result)) return result > 0 ? 'Infinity' : '-Infinity';
-                    return result.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 10 });
-                }
-                return '';
-            } catch (e) { return ''; }
-        };
-
-        const toggleSign = (eq) => {
-            const eqWithoutCommas = eq.replace(/,/g, '');
-            const match = eqWithoutCommas.match(/(-?\d+(\.\d+)?([eE][+-]?\d+)?)$/);
-            if (match) {
-                const lastNum = match[1];
-                let newEq;
-                if (lastNum.startsWith('-')) newEq = eqWithoutCommas.slice(0, -lastNum.length) + lastNum.slice(1);
-                else newEq = eqWithoutCommas.slice(0, -lastNum.length) + '-' + lastNum;
-                return formatEquationWithCommas(newEq);
-            }
-            return eq + '-';
-        };
-
-        // --- TTS Utils ---
-        const speak = (text, lang = 'ar', rate = 1.0) => {
-            if (!window.speechSynthesis) return;
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = rate;
-            const langMap = { ar: 'ar-SA', en: 'en-US' };
-            utterance.lang = langMap[lang] || 'ar-SA';
-            window.speechSynthesis.speak(utterance);
-        };
-
-        const getPronunciation = (char, lang = 'ar') => {
-            const enMap = {
-                '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four', '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
-                '+': 'plus', '-': 'minus', '×': 'times', '÷': 'divided by', '=': 'equals', '.': 'point', '%': 'percent', 'AC': 'all clear', 'DEL': 'delete', '(': 'left parenthesis', ')': 'right parenthesis'
-            };
-            const arMap = {
-                '0': 'صفر', '1': 'واحد', '2': 'اثنان', '3': 'ثلاثة', '4': 'أربعة', '5': 'خمسة', '6': 'ستة', '7': 'سبعة', '8': 'ثمانية', '9': 'تسعة',
-                '+': 'زائد', '-': 'ناقص', '×': 'ضرب', '÷': 'تقسيم', '=': 'يساوي', '.': 'فاصلة', '%': 'بالمئة', 'AC': 'مسح الكل', 'DEL': 'حذف', '(': 'قوس أيسر', ')': 'قوس أيمن'
-            };
-            return (lang === 'en' ? enMap[char] : arMap[char]) || char;
-        };
-
-        // --- Components ---
-        const AutoScalingText = ({ children, className, maxScale = 1, minScale = 0.05 }) => {
-            const containerRef = useRef(null);
-            const textRef = useRef(null);
-            const [scale, setScale] = useState(maxScale);
-
-            useLayoutEffect(() => {
-                const container = containerRef.current;
-                const text = textRef.current;
-                if (!container || !text) return;
-                const containerWidth = container.offsetWidth;
-                const textWidth = text.offsetWidth;
-                let newScale = maxScale;
-                if (textWidth > 0 && containerWidth > 0) {
-                    if (textWidth * maxScale > containerWidth) {
-                        newScale = containerWidth / textWidth;
-                        newScale = Math.max(newScale, minScale);
-                    }
-                }
-                setScale(newScale);
-            }, [children, maxScale, minScale]);
-
-            return (
-                <div ref={containerRef} className={`w-full flex justify-end items-center ${className}`}>
-                    <div ref={textRef} className="origin-right whitespace-nowrap w-max" style={{ transform: `scale(${scale})`, display: 'inline-block', willChange: 'transform' }}>
-                        {children}
-                    </div>
-                </div>
-            );
-        };
-
-        // --- Main App ---
-        function App() {
+        function SmartCalculator() {
             const [equation, setEquation] = useState('');
-            const [result, setResult] = useState('');
-            const [isEvaluated, setIsEvaluated] = useState(false);
-            const [isTtsEnabled, setIsTtsEnabled] = useState(true);
-            const [isDarkMode, setIsDarkMode] = useState(false);
-            const [isArabicKeypad, setIsArabicKeypad] = useState(false);
-            const [speechLang, setSpeechLang] = useState('ar');
-            const [appLang, setAppLang] = useState(navigator.language.startsWith('ar') ? 'ar' : 'en');
-            const [speechRate, setSpeechRate] = useState(1.0);
-            const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-            const [isMenuOpen, setIsMenuOpen] = useState(false);
-            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-            const [isCopied, setIsCopied] = useState(false);
-            const [history, setHistory] = useState([]);
-            const [isRecording, setIsRecording] = useState(false);
-            const menuRef = useRef(null);
+            const [result, setResult] = useState('0');
+            const [isListening, setIsListening] = useState(false);
 
-            const isAppArabic = appLang === 'ar';
+            const speak = (text) => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ar-SA';
+                window.speechSynthesis.speak(utterance);
+            };
 
-            useEffect(() => {
-                const handleClickOutside = (event) => {
-                    if (menuRef.current && !menuRef.current.contains(event.target)) setIsMenuOpen(false);
-                };
-                document.addEventListener('mousedown', handleClickOutside);
-                return () => document.removeEventListener('mousedown', handleClickOutside);
-            }, []);
-
-            const vibrate = useCallback(() => {
-                if (navigator.vibrate) navigator.vibrate(50);
-            }, []);
-
-            const handlePress = useCallback((val) => {
-                vibrate();
+            const handleAction = (val) => {
                 if (val === 'AC') {
-                    setEquation(''); setResult(''); setIsEvaluated(false);
-                    if (isTtsEnabled) speak(speechLang === 'en' ? 'all clear' : 'مسح الكل', speechLang, speechRate);
+                    setEquation('');
+                    setResult('0');
                     return;
                 }
                 if (val === 'DEL') {
-                    if (isEvaluated) { setEquation(''); setResult(''); setIsEvaluated(false); }
-                    else {
-                        const unformattedEq = equation.replace(/,/g, '');
-                        const newEq = unformattedEq.slice(0, -1);
-                        setEquation(formatEquationWithCommas(newEq));
-                        const res = evaluateExpression(newEq);
-                        setResult(res ? formatNumberWithCommas(res) : '');
-                    }
-                    if (isTtsEnabled) speak(speechLang === 'en' ? 'delete' : 'حذف', speechLang, speechRate);
+                    setEquation(prev => prev.slice(0, -1));
                     return;
                 }
                 if (val === '=') {
-                    if (result) {
-                        if (isTtsEnabled) speak(`${speechLang === 'en' ? 'equals' : 'يساوي'} ${result}`, speechLang, speechRate);
-                        if (!isEvaluated) {
-                            setHistory(prev => [{ id: Date.now().toString(), equation, result }, ...prev]);
-                            setIsEvaluated(true);
-                        }
+                    try {
+                        const sanitized = equation.replace(/×/g, '*').replace(/÷/g, '/');
+                        const evalResult = eval(sanitized);
+                        setResult(evalResult.toString());
+                        speak(evalResult.toString());
+                    } catch {
+                        setResult('خطأ في العملية');
                     }
                     return;
                 }
-                if (isEvaluated) {
-                    if (['+', '-', '×', '÷', '%'].includes(val)) {
-                        setIsEvaluated(false); setEquation(result + val); setResult('');
-                    } else {
-                        setIsEvaluated(false); setEquation(val); setResult(val);
-                    }
-                    if (isTtsEnabled) speak(getPronunciation(val, speechLang), speechLang, speechRate);
-                    return;
-                }
-                if (val === '+/-') {
-                    const newEq = toggleSign(equation);
-                    setEquation(newEq);
-                    const res = evaluateExpression(newEq);
-                    setResult(res ? formatNumberWithCommas(res) : '');
-                    return;
-                }
-                if (isTtsEnabled) speak(getPronunciation(val, speechLang), speechLang, speechRate);
-                let unformattedEq = equation.replace(/,/g, '');
-                const operators = ['+', '-', '×', '÷'];
-                if (operators.includes(val) && unformattedEq.length > 0) {
-                    if (operators.includes(unformattedEq.slice(-1))) unformattedEq = unformattedEq.slice(0, -1);
-                }
-                const newEq = unformattedEq + val;
-                setEquation(formatEquationWithCommas(newEq));
-                const res = evaluateExpression(newEq);
-                setResult(res ? formatNumberWithCommas(res) : '');
-            }, [equation, result, isEvaluated, isTtsEnabled, speechLang, speechRate, vibrate]);
+                setEquation(prev => prev + val);
+            };
 
-            const handleCopy = useCallback(() => {
-                if (!equation && !result) return;
-                vibrate();
-                const textToCopy = isEvaluated ? `${equation} = ${result}` : (equation || result);
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                });
-            }, [equation, result, isEvaluated, vibrate]);
-
-            const toDisplay = useCallback((str) => {
-                if (!str) return '';
-                if (!isArabicKeypad) return str;
-                return str.replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[parseInt(d)]);
-            }, [isArabicKeypad]);
-
-            const renderLabel = useCallback((label) => {
-                if (label === 'DEL') return <Icon name="delete" size={24} />;
-                if (!isArabicKeypad) return label;
-                const arabicMap = { '0': '٠', '1': '١', '2': '٢', '3': '٣', '4': '٤', '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩' };
-                return arabicMap[label] || label;
-            }, [isArabicKeypad]);
-
-            const toggleRecording = () => {
+            const startListening = () => {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!SpeechRecognition) { alert("Speech recognition
+                if (!SpeechRecognition) return alert("المتصفح لا يدعم التعرف على الصوت");
+                
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'ar-SA';
+                recognition.onstart = () => setIsListening(true);
+                recognition.onend = () => setIsListening(false);
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    let processed = transcript.replace(/زائد/g, '+').replace(/ناقص/g, '-').replace(/ضرب/g, '*').replace(/على/g, '/');
+                    setEquation(processed);
+                    try {
+                        const res = eval(processed);
+                        setResult(res.toString());
+                        speak(res.toString());
+                    } catch { setResult('لم أفهم العملية'); }
+                };
+                recognition.start();
+            };
+
+            return (
+                <div className="calc-container">
+                    {/* الشاشة الكبيرة الواضحة */}
+                    <div className="screen-area">
+                        <div className="text-gray-400 text-2xl text-left mb-2 overflow-hidden h-10">{equation || '0'}</div>
+                        <div className="text-gray-900 text-6xl font-bold text-left break-all leading-none">
+                            {result}
+                        </div>
+                    </div>
+
+                    {/* أزرار التحكم الإضافية */}
+                    <div className="flex justify-between px-6 py-2 bg-white">
+                        <button onClick={startListening} className={`flex items-center gap-2 px-4 py-2 rounded-full text-white font-bold transition-all ${isListening ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}>
+                            {isListening ? 'جاري السماع...' : '🎤 تحدث الآن'}
+                        </button>
+                        <button onClick={() => speak(result)} className="bg-blue-100 text-blue-600 px-4 py-2 rounded-full font-bold">🔊 نطق النتيجة</button>
+                    </div>
+
+                    {/* لوحة المفاتيح كاملة */}
+                    <div className="btn-grid">
+                        {['AC', '(', ')', '÷'].map(b => <button key={b} onClick={()=>handleAction(b)} className="calc-btn bg-gray-100 text-gray-600">{b}</button>)}
+                        {['7', '8', '9', '×'].map(b => <button key={b} onClick={()=>handleAction(b)} className={`calc-btn ${b==='×'?'op-btn':'bg-white text-gray-800 border'}`}>{b}</button>)}
+                        {['4', '5', '6', '-'].map(b => <button key={b} onClick={()=>handleAction(b)} className={`calc-btn ${b==='-'?'op-btn':'bg-white text-gray-800 border'}`}>{b}</button>)}
+                        {['1', '2', '3', '+'].map(b => <button key={b} onClick={()=>handleAction(b)} className={`calc-btn ${b==='+'?'op-btn':'bg-white text-gray-800 border'}`}>{b}</button>)}
+                        {['0', '.', 'DEL', '='].map(b => <button key={b} onClick={()=>handleAction(b)} className={`calc-btn ${b==='='?'op-btn':'bg-white text-gray-800 border'}`}>{b}</button>)}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SmartCalculator />);
+    </script>
+</body>
+</html>
