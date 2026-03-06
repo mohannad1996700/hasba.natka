@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الحاسبة الناطقة الذكية</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+
+    <style>
+        body {
+            font-family: 'Tajawal', 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } = React;
+        const { motion, AnimatePresence } = window.Motion;
+
+        // --- Lucide Icons Wrapper ---
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current && window.lucide) {
+                    window.lucide.createIcons({
+                        targets: [iconRef.current]
+                    });
+                }
+            }, [name, size]);
+            return <span ref={iconRef} data-lucide={name} style={{ width: size, height: size, display: 'inline-block' }} className={className}></span>;
+        };
+
+        // --- Math Utils ---
+        const formatNumberWithCommas = (numStr) => {
+            if (!numStr) return '';
+            if (numStr.toLowerCase().includes('e')) return numStr;
+            if (numStr === 'NaN' || numStr === 'Infinity' || numStr === '-Infinity') return numStr;
+            const parts = numStr.split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return parts.join('.');
+        };
+
+        const formatEquationWithCommas = (eq) => {
+            if (!eq) return '';
+            return eq.replace(/\d+(\.\d+)?([eE][+-]?\d+)?/g, (match) => formatNumberWithCommas(match));
+        };
+
+        const evaluateExpression = (expr) => {
+            try {
+                let sanitized = expr
+                    .replace(/×/g, '*')
+                    .replace(/÷/g, '/')
+                    .replace(/%/g, '/100')
+                    .replace(/,/g, '');
+                if (!sanitized) return '';
+                sanitized = sanitized.replace(/[+\-*/.]$/, '');
+                if (/^-?\d+(\.\d+)?$/.test(sanitized)) return sanitized;
+                const openParens = (sanitized.match(/\(/g) || []).length;
+                const closeParens = (sanitized.match(/\)/g) || []).length;
+                if (openParens > closeParens) sanitized += ')'.repeat(openParens - closeParens);
+                const result = new Function('return ' + sanitized)();
+                if (typeof result === 'number' && !isNaN(result)) {
+                    if (!isFinite(result)) return result > 0 ? 'Infinity' : '-Infinity';
+                    return result.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 10 });
+                }
+                return '';
+            } catch (e) { return ''; }
+        };
+
+        const toggleSign = (eq) => {
+            const eqWithoutCommas = eq.replace(/,/g, '');
+            const match = eqWithoutCommas.match(/(-?\d+(\.\d+)?([eE][+-]?\d+)?)$/);
+            if (match) {
+                const lastNum = match[1];
+                let newEq;
+                if (lastNum.startsWith('-')) newEq = eqWithoutCommas.slice(0, -lastNum.length) + lastNum.slice(1);
+                else newEq = eqWithoutCommas.slice(0, -lastNum.length) + '-' + lastNum;
+                return formatEquationWithCommas(newEq);
+            }
+            return eq + '-';
+        };
+
+        // --- TTS Utils ---
+        const speak = (text, lang = 'ar', rate = 1.0) => {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = rate;
+            const langMap = { ar: 'ar-SA', en: 'en-US' };
+            utterance.lang = langMap[lang] || 'ar-SA';
+            window.speechSynthesis.speak(utterance);
+        };
+
+        const getPronunciation = (char, lang = 'ar') => {
+            const enMap = {
+                '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four', '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+                '+': 'plus', '-': 'minus', '×': 'times', '÷': 'divided by', '=': 'equals', '.': 'point', '%': 'percent', 'AC': 'all clear', 'DEL': 'delete', '(': 'left parenthesis', ')': 'right parenthesis'
+            };
+            const arMap = {
+                '0': 'صفر', '1': 'واحد', '2': 'اثنان', '3': 'ثلاثة', '4': 'أربعة', '5': 'خمسة', '6': 'ستة', '7': 'سبعة', '8': 'ثمانية', '9': 'تسعة',
+                '+': 'زائد', '-': 'ناقص', '×': 'ضرب', '÷': 'تقسيم', '=': 'يساوي', '.': 'فاصلة', '%': 'بالمئة', 'AC': 'مسح الكل', 'DEL': 'حذف', '(': 'قوس أيسر', ')': 'قوس أيمن'
+            };
+            return (lang === 'en' ? enMap[char] : arMap[char]) || char;
+        };
+
+        // --- Components ---
+        const AutoScalingText = ({ children, className, maxScale = 1, minScale = 0.05 }) => {
+            const containerRef = useRef(null);
+            const textRef = useRef(null);
+            const [scale, setScale] = useState(maxScale);
+
+            useLayoutEffect(() => {
+                const container = containerRef.current;
+                const text = textRef.current;
+                if (!container || !text) return;
+                const containerWidth = container.offsetWidth;
+                const textWidth = text.offsetWidth;
+                let newScale = maxScale;
+                if (textWidth > 0 && containerWidth > 0) {
+                    if (textWidth * maxScale > containerWidth) {
+                        newScale = containerWidth / textWidth;
+                        newScale = Math.max(newScale, minScale);
+                    }
+                }
+                setScale(newScale);
+            }, [children, maxScale, minScale]);
+
+            return (
+                <div ref={containerRef} className={`w-full flex justify-end items-center ${className}`}>
+                    <div ref={textRef} className="origin-right whitespace-nowrap w-max" style={{ transform: `scale(${scale})`, display: 'inline-block', willChange: 'transform' }}>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        function App() {
+            const [equation, setEquation] = useState('');
+            const [result, setResult] = useState('');
+            const [isEvaluated, setIsEvaluated] = useState(false);
+            const [isTtsEnabled, setIsTtsEnabled] = useState(true);
+            const [isDarkMode, setIsDarkMode] = useState(false);
+            const [isArabicKeypad, setIsArabicKeypad] = useState(false);
+            const [speechLang, setSpeechLang] = useState('ar');
+            const [appLang, setAppLang] = useState(navigator.language.startsWith('ar') ? 'ar' : 'en');
+            const [speechRate, setSpeechRate] = useState(1.0);
+            const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+            const [isMenuOpen, setIsMenuOpen] = useState(false);
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [isCopied, setIsCopied] = useState(false);
+            const [history, setHistory] = useState([]);
+            const [isRecording, setIsRecording] = useState(false);
+            const menuRef = useRef(null);
+
+            const isAppArabic = appLang === 'ar';
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (menuRef.current && !menuRef.current.contains(event.target)) setIsMenuOpen(false);
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const vibrate = useCallback(() => {
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, []);
+
+            const handlePress = useCallback((val) => {
+                vibrate();
+                if (val === 'AC') {
+                    setEquation(''); setResult(''); setIsEvaluated(false);
+                    if (isTtsEnabled) speak(speechLang === 'en' ? 'all clear' : 'مسح الكل', speechLang, speechRate);
+                    return;
+                }
+                if (val === 'DEL') {
+                    if (isEvaluated) { setEquation(''); setResult(''); setIsEvaluated(false); }
+                    else {
+                        const unformattedEq = equation.replace(/,/g, '');
+                        const newEq = unformattedEq.slice(0, -1);
+                        setEquation(formatEquationWithCommas(newEq));
+                        const res = evaluateExpression(newEq);
+                        setResult(res ? formatNumberWithCommas(res) : '');
+                    }
+                    if (isTtsEnabled) speak(speechLang === 'en' ? 'delete' : 'حذف', speechLang, speechRate);
+                    return;
+                }
+                if (val === '=') {
+                    if (result) {
+                        if (isTtsEnabled) speak(`${speechLang === 'en' ? 'equals' : 'يساوي'} ${result}`, speechLang, speechRate);
+                        if (!isEvaluated) {
+                            setHistory(prev => [{ id: Date.now().toString(), equation, result }, ...prev]);
+                            setIsEvaluated(true);
+                        }
+                    }
+                    return;
+                }
+                if (isEvaluated) {
+                    if (['+', '-', '×', '÷', '%'].includes(val)) {
+                        setIsEvaluated(false); setEquation(result + val); setResult('');
+                    } else {
+                        setIsEvaluated(false); setEquation(val); setResult(val);
+                    }
+                    if (isTtsEnabled) speak(getPronunciation(val, speechLang), speechLang, speechRate);
+                    return;
+                }
+                if (val === '+/-') {
+                    const newEq = toggleSign(equation);
+                    setEquation(newEq);
+                    const res = evaluateExpression(newEq);
+                    setResult(res ? formatNumberWithCommas(res) : '');
+                    return;
+                }
+                if (isTtsEnabled) speak(getPronunciation(val, speechLang), speechLang, speechRate);
+                let unformattedEq = equation.replace(/,/g, '');
+                const operators = ['+', '-', '×', '÷'];
+                if (operators.includes(val) && unformattedEq.length > 0) {
+                    if (operators.includes(unformattedEq.slice(-1))) unformattedEq = unformattedEq.slice(0, -1);
+                }
+                const newEq = unformattedEq + val;
+                setEquation(formatEquationWithCommas(newEq));
+                const res = evaluateExpression(newEq);
+                setResult(res ? formatNumberWithCommas(res) : '');
+            }, [equation, result, isEvaluated, isTtsEnabled, speechLang, speechRate, vibrate]);
+
+            const handleCopy = useCallback(() => {
+                if (!equation && !result) return;
+                vibrate();
+                const textToCopy = isEvaluated ? `${equation} = ${result}` : (equation || result);
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                });
+            }, [equation, result, isEvaluated, vibrate]);
+
+            const toDisplay = useCallback((str) => {
+                if (!str) return '';
+                if (!isArabicKeypad) return str;
+                return str.replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[parseInt(d)]);
+            }, [isArabicKeypad]);
+
+            const renderLabel = useCallback((label) => {
+                if (label === 'DEL') return <Icon name="delete" size={24} />;
+                if (!isArabicKeypad) return label;
+                const arabicMap = { '0': '٠', '1': '١', '2': '٢', '3': '٣', '4': '٤', '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩' };
+                return arabicMap[label] || label;
+            }, [isArabicKeypad]);
+
+            const toggleRecording = () => {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) { alert("Speech recognition is not supported."); return; }
+                if (isRecording) { setIsRecording(false); return; }
+                const recognition = new SpeechRecognition();
+                recognition.lang = speechLang === 'ar' ? 'ar-SA' : 'en-US';
+                recognition.onstart = () => setIsRecording(true);
+                recognition.onresult = (event) => {
+                    let transcript = event.results[0][0].transcript.toLowerCase();
+                    transcript = transcript.replace(/[٠١٢٣٤٥٦٧٨٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                    let eq = transcript.replace(/زائد/g, '+').replace(/ناقص/g, '-').replace(/ضرب/g, '×').replace(/تقسيم/g, '÷').replace(/\s+/g, '');
+                    eq = eq.replace(/[^0-9+\-×÷.%()]/g, '');
+                    if (eq) {
+                        setEquation(formatEquationWithCommas(eq));
+                        const res = evaluateExpression(eq);
+                        setResult(res ? formatNumberWithCommas(res) : '');
+                        setIsEvaluated(true);
+                        if (isTtsEnabled) speak(`${speechLang === 'en' ? 'equals' : 'يساوي'} ${res}`, speechLang, speechRate);
+                    }
+                };
+                recognition.onerror = () => setIsRecording(false);
+                recognition.onend = () => setIsRecording(false);
+                recognition.start();
+            };
+
+            const buttons = [
+                { label: 'AC', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
+                { label: '(', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
+                { label: ')', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
+                { label: 'DEL', class: `col-span-1 ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-800'}` },
+                { label: '7', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '8', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '9', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '÷', class: 'col-span-1 bg-orange-500 text-white' },
+                { label: '4', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '5', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '6', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '×', class: 'col-span-1 bg-orange-500 text-white' },
+                { label: '1', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '2', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '3', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '-', class: 'col-span-1 bg-orange-500 text-white' },
+                { label: '%', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '0', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '.', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '+', class: 'col-span-1 bg-orange-500 text-white' },
+                { label: '+/-', class: `col-span-1 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}` },
+                { label: '=', class: 'col-span-3 bg-orange-500 text-white' },
+            ];
+
+            return (
+                <div className={`min-h-[100dvh] transition-colors duration-300 flex items-center justify-center sm:p-4 font-sans ${isDarkMode ? 'bg-gray-950' : 'bg-gray-100'}`} dir={isAppArabic ? 'rtl' : 'ltr'}>
+                    <div className={`w-full h-[100dvh] sm:h-[850px] sm:max-h-[90vh] sm:max-w-md sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                        
+                        {isSettingsOpen && (
+                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                                <div onClick={() => setIsSettingsOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                                <div className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}`}>
+                                    <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                                        <h2 className="text-xl font-bold">{isAppArabic ? 'الإعدادات' : 'Settings'}</h2>
+                                        <button onClick={() => setIsSettingsOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                                            <Icon name="x" size={20} />
+                                        </button>
+                                    </div>
+                                    <div className="p-6 space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}><Icon name="globe" size={20} /></div>
+                                                <div>
+                                                    <p className="font-semibold">{isAppArabic ? 'لغة التطبيق' : 'App Language'}</p>
+                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تغيير لغة واجهة التطبيق' : 'Change app interface language'}</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { vibrate(); setAppLang(prev => prev === 'ar' ? 'en' : 'ar'); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${appLang === 'ar' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
+                                                {appLang === 'ar' ? 'العربية' : 'English'}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}><Icon name="globe" size={20} /></div>
+                                                <div>
+                                                    <p className="font-semibold">{isAppArabic ? 'لغة الأرقام' : 'Number Language'}</p>
+                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تبديل بين ١٢٣ و 123' : 'Switch between ١٢٣ and 123'}</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { vibrate(); setIsArabicKeypad(!isArabicKeypad); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${isArabicKeypad ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
+                                                {isArabicKeypad ? (isAppArabic ? 'عربي' : 'Arabic') : 'English'}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-50 text-purple-600'}`}><Icon name="mic" size={20} /></div>
+                                                <div>
+                                                    <p className="font-semibold">{isAppArabic ? 'لغة التحدث' : 'Speech Language'}</p>
+                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'لغة التعرف على الصوت والنطق' : 'Voice recognition and TTS language'}</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { vibrate(); setSpeechLang(prev => prev === 'ar' ? 'en' : 'ar'); }} className={`px-4 py-2 rounded-xl font-bold transition-all ${speechLang === 'ar' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'}`}>
+                                                {speechLang === 'ar' ? (isAppArabic ? 'العربية' : 'Arabic') : 'English'}
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3 pt-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-orange-500/10 text-orange-400' : 'bg-orange-50 text-orange-600'}`}><Icon name="play" size={20} /></div>
+                                                <div>
+                                                    <p className="font-semibold">{isAppArabic ? 'سرعة النطق' : 'Speech Rate'}</p>
+                                                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{isAppArabic ? 'تحكم في سرعة صوت الآلة' : 'Control the voice speed'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                                                {[0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
+                                                    <button key={rate} onClick={() => { vibrate(); setSpeechRate(rate); }} className={`flex-1 min-w-[60px] py-2 rounded-xl font-bold transition-all ${speechRate === rate ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600')}`}>
+                                                        {rate}x
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className={`p-6 border-t text-center ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                                        <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isAppArabic ? 'آلة حاسبة ذكية v2.0' : 'Smart Calculator v2.0'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={`absolute top-0 left-0 w-4/5 sm:w-72 h-full shadow-[4px_0_24px_rgba(0,0,0,0.1)] z-50 transform transition-all duration-300 flex flex-col ${isHistoryOpen ? 'translate-x-0' : '-translate-x-full'} ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                            <div className={`p-5 border-b flex justify-between items-center ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
+                                <button onClick={() => setIsHistoryOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-200'}`}><Icon name="x" size={20} /></button>
+                                <span className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{isAppArabic ? 'السجل' : 'History'}</span>
+                                <button onClick={() => { vibrate(); setHistory([]); }} className="text-red-500 text-sm font-medium px-3 py-1.5 rounded-full hover:bg-red-500/10 transition-colors">{isAppArabic ? 'مسح الكل' : 'Clear All'}</button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {history.length === 0 ? (
+                                    <div className={`text-center mt-10 text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isAppArabic ? 'لا توجد عمليات سابقة' : 'No previous calculations'}</div>
+                                ) : (
+                                    history.map((item) => (
+                                        <div key={item.id} onClick={() => { vibrate(); setIsEvaluated(true); setEquation(item.equation); setResult(item.result); setIsHistoryOpen(false); }} className={`p-4 rounded-2xl cursor-pointer transition-all active:scale-95 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                                            <div className={`text-xs mb-1 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{toDisplay(item.equation)}</div>
+                                            <div className={`text-lg font-bold text-right ${isDarkMode ? 'text-white' : 'text-gray-900'}`} dir="ltr">{toDisplay(item.result)}</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="w-full h-16 sm:h-20 flex items-center justify-between px-6 pt-4 sm:pt-6 z-10">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => { vibrate(); toggleRecording(); }} className={`p-3 rounded-full shadow-sm transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>
+                                    <Icon name="mic" size={22} />
+                                </button>
+                                <button onClick={() => { vibrate(); setIsTtsEnabled(!isTtsEnabled); }} className={`p-3 rounded-full transition-all ${isTtsEnabled ? 'bg-indigo-500 text-white' : (isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}`}>
+                                    <Icon name={isTtsEnabled ? "volume-2" : "volume-x"} size={22} />
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => { vibrate(); setIsDarkMode(!isDarkMode); }} className={`p-3 rounded-full transition-all ${isDarkMode ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                    <Icon name={isDarkMode ? "sun" : "moon"} size={22} />
+                                </button>
+                                <div className="relative" ref={menuRef}>
+                                    <button onClick={() => { vibrate(); setIsMenuOpen(!isMenuOpen); }} className={`p-3 rounded-full transition-all ${isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                                        <Icon name="more-vertical" size={22} />
+                                    </button>
+                                    {isMenuOpen && (
+                                        <div className={`absolute top-full left-0 mt-2 w-48 rounded-2xl shadow-xl z-50 overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                            <button onClick={() => { vibrate(); setIsHistoryOpen(true); setIsMenuOpen(false); }} className={`w-full px-4 py-3 text-right flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-white' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                                <Icon name="history" size={18} />
+                                                <span className="font-medium">{isAppArabic ? 'السجل' : 'History'}</span>
+                                            </button>
+                                            <button onClick={() => { vibrate(); setIsSettingsOpen(true); setIsMenuOpen(false); }} className={`w-full px-4 py-3 text-right flex items-center gap-3 transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-white' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                                <Icon name="settings" size={18} />
+                                                <span className="font-medium">{isAppArabic ? 'الإعدادات' : 'Settings'}</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col justify-end px-6 py-8 sm:py-10 relative">
+                            <div className="absolute top-4 right-6">
+                                <button onClick={handleCopy} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isCopied ? 'bg-green-500 text-white' : (isDarkMode ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}`}>
+                                    <Icon name={isCopied ? "check" : "copy"} size={14} />
+                                    {isCopied ? (isAppArabic ? 'تم النسخ' : 'Copied') : (isAppArabic ? 'نسخ' : 'Copy')}
+                                </button>
+                            </div>
+                            <div className="space-y-2">
+                                <AutoScalingText className={`font-medium text-right transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} maxScale={1.5} minScale={0.5}>
+                                    {toDisplay(equation) || '0'}
+                                </AutoScalingText>
+                                <AutoScalingText className={`font-bold text-right transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`} maxScale={3.5} minScale={0.8}>
+                                    {result ? `=${toDisplay(result)}` : toDisplay(equation) || '0'}
+                                </AutoScalingText>
+                            </div>
+                        </div>
+
+                        <div className={`p-6 sm:p-8 grid grid-cols-4 gap-3 sm:gap-4 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
+                            {buttons.map((btn, idx) => (
+                                <button key={idx} onClick={() => handlePress(btn.label)} className={`h-16 sm:h-20 rounded-[24px] sm:rounded-[30px] text-xl sm:text-2xl font-bold flex items-center justify-center transition-all active:scale-90 shadow-sm hover:brightness-110 ${btn.class}`}>
+                                    {renderLabel(btn.label)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+  </html>
