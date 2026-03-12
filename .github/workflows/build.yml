@@ -1,0 +1,81 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+          validate-wrappers: false
+
+      - name: Build APK and AAB
+        working-directory: ./android
+        run: |
+          gradle assembleDebug
+          gradle bundleRelease
+
+      - name: Sign AAB
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        with:
+          releaseDirectory: android/app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload APK (للتجربة على الهاتف)
+        uses: actions/upload-artifact@v4
+        with:
+          name: calculator-app-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Signed AAB (للنشر على جوجل بلاي)
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        uses: actions/upload-artifact@v4
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        with:
+          name: calculator-app-signed-aab
+          path: ${{steps.sign_app.outputs.signedReleaseFile}}
+
+      - name: Upload Unsigned AAB (احتياطي)
+        if: ${{ env.KEYSTORE_BASE64 == '' }}
+        uses: actions/upload-artifact@v4
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        with:
+          name: calculator-app-unsigned-aab
+          path: android/app/build/outputs/bundle/release/app-release-unsigned.aab
